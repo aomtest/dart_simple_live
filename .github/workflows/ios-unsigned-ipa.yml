@@ -1,0 +1,51 @@
+name: build-unsigned-ipa
+
+# 放到你自己 fork 的仓库里：.github/workflows/ios-unsigned-ipa.yml
+# 触发方式：Actions 页面手动点 Run workflow，或推送 v* 开头的 tag
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+
+      - name: Restore packages
+        working-directory: simple_live_app
+        run: flutter pub get
+
+      # 关键：--no-codesign 跳过签名，产出未签名的 Runner.app
+      - name: Build iOS (no codesign)
+        working-directory: simple_live_app
+        run: flutter build ios --release --no-codesign
+
+      # 按 IPA 规范打包：Payload/Runner.app -> zip 改名为 .ipa
+      - name: Package unsigned IPA
+        working-directory: simple_live_app/build/ios/iphoneos
+        run: |
+          rm -rf Payload ios_no_sign.ipa
+          mkdir -p Payload
+          cp -R Runner.app Payload/Runner.app
+          zip -q -r ios_no_sign.ipa Payload
+          ls -lh ios_no_sign.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: simple_live_app/build/ios/iphoneos/ios_no_sign.ipa
+          if-no-files-found: error
